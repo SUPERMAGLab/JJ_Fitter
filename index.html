@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUPERMAG Lab: JJ Fitter</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;600&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF7F2;
+  --surface: #FFFFFF;
+  --bdr: #d4c4b0;
+  --maroon: #501214;
+  --maroon-dark: #3a0d0f;
+  --gold: #6A5638;
+  --gold-bg: #fdf6ec;
+  --fg: #2a0d0f;
+  --dim: #7a5a5c;
+  --brt: #501214;
+  --grn: #2e7d32;
+  --red: #c62828;
+  --org: #e65100;
+  --pur: #6d28d9;
+  /* chart data colors — kept vivid so they read on white */
+  --c-blue: #2563eb;
+  --c-green: #16a34a;
+  --c-orange: #ea580c;
+  --c-purple: #7c3aed;
+  --c-red: #dc2626;
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html { font-size: 14px; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.s-header { background: var(--maroon); color: #fff; padding: 1.4rem 1.25rem 1.2rem; position: relative; overflow: hidden; }
+.s-header::after { content: ''; position: absolute; top: -30px; right: -30px; width: 160px; height: 160px; border-radius: 50%; background: rgba(200,169,110,0.10); pointer-events: none; }
+.s-header-inner { max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; display: flex; align-items: baseline; gap: 1.25rem; flex-wrap: wrap; }
+.s-eyebrow { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; color: #c8a96e; margin-bottom: 0.3rem; }
+.s-title { display: block; font-family: 'EB Garamond', Georgia, serif; font-size: clamp(1.35rem, 4vw, 1.85rem); font-weight: 600; color: #fff; line-height: 1.2; }
+.s-subtitle { display: block; font-size: 0.78rem; color: rgba(255,255,255,0.65); font-style: italic; }
+.s-header-meta { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
+
+/* ── Stage bar ── */
+.stagebar { background: var(--maroon-dark); overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.stagebar::-webkit-scrollbar { display: none; }
+.stagebar-inner { display: flex; max-width: 1100px; margin: 0 auto; min-width: max-content; }
+.stagebtn {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.72rem; font-weight: 500;
+  letter-spacing: 0.04em; color: rgba(255,255,255,0.55); background: none;
+  border: none; border-bottom: 3px solid transparent; cursor: pointer;
+  padding: 0.6rem 1rem; white-space: nowrap; line-height: 1.4;
+  transition: color 0.15s, border-color 0.15s; -webkit-appearance: none; appearance: none;
+}
+.stagebtn:hover { color: rgba(255,255,255,0.85); }
+.stagebtn.active { color: #c8a96e; border-bottom-color: #c8a96e; font-weight: 600; }
+.stagebtn.done { color: rgba(255,255,255,0.55); }
+.stagebtn.done::before { content: '✓ '; color: #c8a96e; }
+
+/* ── Main content ── */
+.main { max-width: 1100px; margin: 0 auto; padding: 1rem; overflow: auto; }
+
+/* ── Cards / panels ── */
+.panel { background: var(--surface); border: 1px solid var(--bdr); border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; box-shadow: 0 1px 4px rgba(80,18,20,0.06); }
+
+/* ── Grid layouts ── */
+.grid2  { display: grid; grid-template-columns: 1fr 280px; gap: 10px; }
+.grid2w { display: grid; grid-template-columns: 1fr 270px; gap: 10px; }
+.grid2s { display: grid; grid-template-columns: 1fr 260px; gap: 10px; }
+.grid3  { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.gridf  { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+@media (max-width: 640px) {
+  .grid2, .grid2w, .grid2s { grid-template-columns: 1fr; }
+}
+
+/* ── Labels ── */
+label.lbl {
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 0.7rem; font-weight: 500;
+  color: var(--dim); display: block; margin-bottom: 3px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+/* ── Inputs ── */
+input.inp {
+  font-family: 'IBM Plex Mono', monospace; background: #fff;
+  border: 1.5px solid var(--bdr); border-radius: 5px; color: var(--fg);
+  padding: 0.35rem 0.6rem; font-size: 0.82rem; width: 100%;
+  transition: border-color 0.15s, box-shadow 0.15s; outline: none;
+}
+input.inp:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px rgba(80,18,20,0.10); }
+input[type=range] { width: 100%; accent-color: var(--maroon); }
+
+/* ── Selects ── */
+select.sel {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; background: #fff;
+  border: 1.5px solid var(--bdr); border-radius: 5px; color: var(--fg);
+  padding: 0.35rem 2rem 0.35rem 0.6rem; font-size: 0.82rem; width: 100%;
+  -webkit-appearance: none; appearance: none; cursor: pointer; outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23501214' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.6rem center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+select.sel:focus { border-color: var(--maroon); box-shadow: 0 0 0 3px rgba(80,18,20,0.10); }
+
+/* ── Buttons ── */
+.btn {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.8rem; font-weight: 500;
+  background: transparent; border: 1.5px solid var(--bdr); border-radius: 5px;
+  color: var(--dim); padding: 0.45rem 1rem; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, transform 0.1s; -webkit-appearance: none;
+}
+.btn:hover { border-color: var(--maroon); color: var(--maroon); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-a {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.8rem; font-weight: 600;
+  background: var(--maroon); border: none; border-radius: 5px; color: #fff;
+  padding: 0.5rem 1.25rem; cursor: pointer; transition: background 0.15s, transform 0.1s;
+}
+.btn-a:hover { background: #6b1a1d; }
+.btn-a:active { transform: scale(0.97); }
+.btn-d {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 600;
+  background: var(--red); border: none; border-radius: 5px; color: #fff;
+  padding: 0.4rem 0.85rem; cursor: pointer; transition: background 0.15s;
+}
+.btn-d:hover { background: #991b1b; }
+.btn-g {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 0.75rem; font-weight: 500;
+  background: transparent; border: 1.5px solid var(--bdr); border-radius: 5px;
+  color: var(--dim); padding: 0.4rem 0.85rem; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-g:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ── Tags / badges ── */
+.tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.68rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+
+/* ── Rn tag in header ── */
+#rnTag { background: rgba(106,86,56,0.15); color: var(--gold); border: 1px solid rgba(106,86,56,0.3); }
+
+/* ── Drop zone ── */
+.dropzone {
+  border: 2px dashed var(--bdr); border-radius: 10px; padding: 3rem 1.5rem;
+  text-align: center; cursor: pointer; color: var(--dim);
+  background: rgba(80,18,20,0.025); transition: background 0.2s, border-color 0.2s;
+}
+.dropzone:hover { background: rgba(80,18,20,0.05); border-color: var(--maroon); }
+
+/* ── KV rows ── */
+.kv { display: flex; justify-content: space-between; align-items: baseline; padding: 3px 0; font-size: 0.78rem; border-bottom: 1px solid rgba(212,196,176,0.4); }
+.kv:last-child { border-bottom: none; }
+.kv .k { color: var(--dim); }
+.kv .v { font-family: 'IBM Plex Mono', monospace; color: var(--maroon); font-weight: 600; }
+
+/* ── Progress bar ── */
+.prog { flex: 1; height: 4px; background: #f0ebe3; border-radius: 2px; overflow: hidden; }
+.prog-fill { height: 100%; background: var(--maroon); border-radius: 2px; transition: width 0.15s; }
+
+/* ── Section headings (generated by JS) ── */
+.section-title { font-family: 'EB Garamond', Georgia, serif; font-size: 1.15rem; font-weight: 600; color: var(--maroon); margin-bottom: 0.75rem; }
+.subsection-title { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold); margin-bottom: 0.5rem; }
+
+/* ── Misc ── */
+.flex { display: flex; gap: 8px; align-items: center; }
+.hide { display: none !important; }
+.center { text-align: center; }
+canvas { max-width: 100%; }
+.chart-wrap { position: relative; width: 100%; background: #fff; border-radius: 4px; }
+.mb4{margin-bottom:4px} .mb8{margin-bottom:8px} .mb10{margin-bottom:10px}
+.mt6{margin-top:6px} .mt8{margin-top:8px} .mt10{margin-top:10px}
+
+/* ── Footer ── */
+.s-footer { background: var(--maroon-dark); color: rgba(255,255,255,0.50); text-align: center; padding: 1.25rem 1rem; font-size: 0.7rem; line-height: 1.7; margin-top: 1rem; }
+.s-footer strong { color: rgba(255,255,255,0.8); }
+</style>
+</head>
+<body>
+<div class="s-header">
+  <div class="s-header-inner">
+    <div>
+      <span class="s-eyebrow">SUPERMAG Lab · Texas State University</span>
+      <span class="s-title">JJ Fitter</span>
+      <span class="s-subtitle">Josephson Junction Analysis — RSJ fitting &amp; Fraunhofer pattern</span>
+    </div>
+    <div class="s-header-meta">
+      <span id="rnTag" class="tag hide"></span>
+    </div>
+  </div>
+</div>
+<div class="stagebar" id="stagebar"><div class="stagebar-inner" id="stagebarInner"></div></div>
+<div class="main" id="main"></div>
+
+<div class="s-footer">
+  <strong>SUPERMAG Lab</strong> — Department of Physics, Texas State University<br>
+  This tool is provided as-is for educational and research use, without guarantee or warranty. Users should independently verify all outputs.
+</div>
+
+<script>
+// ═══════════════ MATH ═══════════════
+const Phi0=2.067833848e-15;
+function besselJ1(x){const ax=Math.abs(x);if(ax<8){const y=x*x;const r1=x*(72362614232+y*(-7895059235+y*(242396853.1+y*(-2972611.439+y*(15704.4826+y*-30.16036606)))));const r2=144725228442+y*(2300535178+y*(18583304.74+y*(99447.43394+y*(376.9991397+y))));return r1/r2}const z=8/ax,y=z*z,xx=ax-2.356194491;const p0=1+y*(0.183105e-2+y*(-0.3516396496e-4+y*(0.2457520174e-5+y*-0.240337019e-6)));const q0=0.04687499995+y*(-0.2002690873e-3+y*(0.8449199096e-5+y*(-0.88228987e-6+y*0.105787412e-6)));const ans=Math.sqrt(0.636619772/ax)*(Math.cos(xx)*p0-z*Math.sin(xx)*q0);return x<0?-ans:ans}
+
+function nelderMead(fn,x0,opts){const{maxIter=3000,tol=1e-12,bounds=null}=opts||{};const n=x0.length;const cl=x=>bounds?x.map((v,i)=>Math.max(bounds[0][i],Math.min(bounds[1][i],v))):x;const S=[cl([...x0])];for(let i=0;i<n;i++){const p=[...x0];p[i]+=Math.abs(p[i])*0.05+1e-8;S.push(cl(p))}const co=S.map(fn);for(let it=0;it<maxIter;it++){const ix=[...Array(n+1).keys()].sort((a,b)=>co[a]-co[b]);const ss=ix.map(i=>S[i]),sc=ix.map(i=>co[i]);for(let i=0;i<=n;i++){S[i]=ss[i];co[i]=sc[i]}if(Math.abs(co[n]-co[0])<tol)break;const ce=Array(n).fill(0);for(let i=0;i<n;i++)for(let j=0;j<n;j++)ce[j]+=S[i][j];for(let j=0;j<n;j++)ce[j]/=n;const xr=cl(ce.map((c,j)=>2*c-S[n][j])),fr=fn(xr);if(fr<co[0]){const xe=cl(ce.map((c,j)=>3*c-2*S[n][j])),fe=fn(xe);if(fe<fr){S[n]=xe;co[n]=fe}else{S[n]=xr;co[n]=fr}}else if(fr<co[n-1]){S[n]=xr;co[n]=fr}else{const xc=cl(ce.map((c,j)=>0.5*(c+S[n][j]))),fc=fn(xc);if(fc<co[n]){S[n]=xc;co[n]=fc}else{for(let i=1;i<=n;i++){S[i]=cl(S[0].map((s,j)=>0.5*(s+S[i][j])));co[i]=fn(S[i])}}}}let bi=0;for(let i=1;i<=n;i++)if(co[i]<co[bi])bi=i;return{x:S[bi],cost:co[bi]}}
+
+function rsjV(I,Ic,Rn,V0){return V0+Rn*Math.sign(I)*Math.sqrt(Math.max(I*I-Ic*Ic,0))}
+function teffInplane(l,tT,tB,d){return l*Math.tanh(tB/(2*l))+l*Math.tanh(tT/(2*l))+d}
+function airyEnv(Ic0,Bs,w,te,Ho){return Bs.map(b=>{const bT=(b-Ho)*1e-4,x=Math.PI*bT*w*te/Phi0;return Ic0*(Math.abs(x)<1e-12?1:Math.abs(2*besselJ1(x)/x))})}
+
+// ═══════════════ PARSING ═══════════════
+function parsePPMS(text){
+  const lines=text.replace(/^\xEF\xBB\xBF/,"").replace(/^\uFEFF/,"").replace(/\r\n/g,"\n").split("\n").filter(l=>l.trim());
+  if(lines.length<2)return null;
+  const hdr=lines[0].split(",");
+  const iC=hdr.findIndex(h=>h.includes("Current Amplitude Setpoint"));
+  const vC=hdr.findIndex(h=>h.includes("Voltage (V)"));
+  let bC=hdr.findIndex(h=>h.includes("Field Setpoint")&&h.includes("(Value)"));
+  if(bC<0)bC=hdr.findIndex(h=>h.includes("Measured Field")&&h.includes("(Value)"));
+  if(bC<0)bC=hdr.findIndex(h=>h.includes("Field")&&h.includes("(Value)"));
+  if(iC<0||vC<0||bC<0)return null;
+  let unit="Oe";const bn=hdr[bC];
+  if(bn.includes("(G)")||bn.includes("Gauss"))unit="Oe";
+  else if(bn.includes("(mT)"))unit="mT";else if(bn.includes("(T)")&&!bn.includes("(mT)"))unit="T";
+  // Parse all rows preserving acquisition order
+  const rows=[];
+  for(let i=1;i<lines.length;i++){const p=lines[i].split(","),b=+p[bC],I=+p[iC],V=+p[vC];if(!isFinite(b)||!isFinite(I)||!isFinite(V))continue;rows.push({B:b,I,V})}
+  // Build unique consecutive B sequence and group rows per step
+  const seq=[];const stepRows=[];let lastB=null;
+  for(const r of rows){if(r.B!==lastB){seq.push(r.B);stepRows.push([]);lastB=r.B}stepRows[stepRows.length-1].push(r)}
+  // Build per-step curves (acquisition order, may have duplicate B for fwd/rev)
+  const stepCurves=stepRows.map((rs,i)=>{rs.sort((a,b)=>a.I-b.I);return{B:seq[i],I:rs.map(r=>r.I),V:rs.map(r=>r.V)}});
+  // Also build merged-by-B curves (old behavior, for compat)
+  const byB=new Map();
+  for(const r of rows){if(!byB.has(r.B))byB.set(r.B,[]);byB.get(r.B).push(r)}
+  const curves=[];byB.forEach((pts,B)=>{pts.sort((a,b)=>a.I-b.I);curves.push({B,I:pts.map(p=>p.I),V:pts.map(p=>p.V)})});
+  curves.sort((a,b)=>a.B-b.B);
+  return{curves,unit,seq,stepCurves}
+}
+
+// ═══════════════ FITTING ═══════════════
+function baseCorr(I,V){let vb=0;const zi=I.findIndex(i=>Math.abs(i)<1e-12);if(zi>=0)vb=V[zi];else{let pi=-1,ni=-1;for(let i=0;i<I.length;i++){if(I[i]>0&&(pi<0||I[i]<I[pi]))pi=i;if(I[i]<0&&(ni<0||I[i]>I[ni]))ni=i}if(pi>=0&&ni>=0&&I[pi]!==I[ni])vb=V[ni]+(0-I[ni])*(V[pi]-V[ni])/(I[pi]-I[ni])}return{Vc:V.map(v=>v-vb),Vb:vb}}
+
+function estRn(curves){
+  const sorted=[...curves].sort((a,b)=>Math.abs(b.B)-Math.abs(a.B));
+  const n=Math.max(1,Math.ceil(0.2*sorted.length)),slopes=[];
+  for(let k=0;k<n;k++){const c=sorted[k],bc=baseCorr(c.I,c.V),Ia=c.I.map(Math.abs),mx=Math.max(...Ia),thr=0.7*mx;
+    const ii=[],vv=[];for(let j=0;j<c.I.length;j++)if(Ia[j]>=thr){ii.push(c.I[j]);vv.push(bc.Vc[j])}
+    if(ii.length<4)continue;let sx=0,sy=0,sxx=0,sxy=0;for(let j=0;j<ii.length;j++){sx+=ii[j];sy+=vv[j];sxx+=ii[j]*ii[j];sxy+=ii[j]*vv[j]}
+    const d=ii.length*sxx-sx*sx;if(Math.abs(d)<1e-30)continue;const sl=(ii.length*sxy-sx*sy)/d;if(sl>0&&isFinite(sl))slopes.push(sl)}
+  if(!slopes.length)return 1;slopes.sort((a,b)=>a-b);return slopes[Math.floor(slopes.length/2)]
+}
+
+function fitRSJ(I,V,RnS,bf,IcSeed){
+  const bc=baseCorr(I,V),Vc=bc.Vc,Vb=bc.Vb,Im=Math.max(...I.map(Math.abs));
+  const rl=RnS*(1-bf),rh=RnS*(1+bf);let ic0=IcSeed!=null?Math.min(IcSeed,0.95*Im):0;
+  if(IcSeed==null){let best=1/0;for(let k=1;k<300;k++){const ic=k/300*0.95*Im;let c=0;for(let j=0;j<I.length;j++){const r=Vc[j]-rsjV(I[j],ic,RnS,0);c+=r*r}if(c<best){best=c;ic0=ic}}}
+  const cf=p=>{const[ic,rn,v0]=p;if(ic<0||ic>0.95*Im||rn<rl||rn>rh)return 1e20;let c=0;for(let j=0;j<I.length;j++){const r=Vc[j]-rsjV(I[j],ic,rn,v0);c+=r*r}return c};
+  const res=nelderMead(cf,[ic0,RnS,0],{maxIter:2500,bounds:[[0,rl,-5e-6],[0.95*Im,rh,5e-6]]});
+  return{Ic:res.x[0],Rn:res.x[1],V0:res.x[2],Vb,cost:res.cost,Vc}
+}
+
+function dlCSV(name,csv){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=name;a.style.display="none";document.body.appendChild(a);a.click();setTimeout(()=>{document.body.removeChild(a)},300)}
+
+// ═══════════════ STATE ═══════════════
+const ST={stage:0,plusRaw:null,minusRaw:null,unit:"Oe",RnStar:null,rnBF:0.2,
+  plusAll:null,minusAll:null,plusSeq:[],minusSeq:[],plusRange:[0,0],minusRange:[0,0],
+  order:[],pos:0,fits:new Map(),curIc:0,curRn:0,
+  diodeMode:"free",
+  airy:{lambdaL:100,tTop:150,tBot:60,dBarrier:13,w:3,HoffP:0,HoffM:0,Ic0p:1,Ic0m:1,signMode:"pluspos"},
+  charts:{}};
+
+// ═══════════════ CHARTS ═══════════════
+function destroyCharts(){Object.values(ST.charts).forEach(c=>{try{c.destroy()}catch(e){}});ST.charts={}}
+
+function makeScatter(canvasId,xData,datasets,xLabel,yLabel,opts){
+  const canvas=document.getElementById(canvasId);if(!canvas)return null;
+  const cfg={type:"scatter",data:{datasets:datasets.map(d=>({
+    label:d.label,data:d.x.map((x,i)=>({x,y:d.y[i]})),
+    backgroundColor:d.color||"#2563eb",borderColor:d.borderColor||d.color||"#2563eb",
+    pointRadius:d.radius||3,pointStyle:d.style||"circle",showLine:!!d.line,
+    borderWidth:d.lineWidth||2,fill:false,order:d.order||1,tension:0
+  }))},options:{responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:opts?.legend!==false,labels:{color:"#7a5a5c",font:{size:10,family:"'IBM Plex Sans',sans-serif"},boxWidth:12}},
+      tooltip:{titleFont:{family:"'IBM Plex Mono',monospace",size:10},bodyFont:{family:"'IBM Plex Mono',monospace",size:10},backgroundColor:"#fff",titleColor:"#501214",bodyColor:"#2a0d0f",borderColor:"#d4c4b0",borderWidth:1}},
+    scales:{x:{title:{display:!!xLabel,text:xLabel,color:"#7a5a5c",font:{size:10,family:"'IBM Plex Sans',sans-serif"}},ticks:{color:"#7a5a5c",font:{size:9}},grid:{color:"rgba(212,196,176,0.5)"}},
+      y:{title:{display:!!yLabel,text:yLabel,color:"#7a5a5c",font:{size:10,family:"'IBM Plex Sans',sans-serif"}},ticks:{color:"#7a5a5c",font:{size:9}},grid:{color:"rgba(212,196,176,0.5)"}}}}};
+  if(opts?.yZero)cfg.options.plugins.annotation={annotations:{zero:{type:"line",yMin:0,yMax:0,borderColor:"#b5a99a",borderDash:[4,4]}}};
+  const ch=new Chart(canvas,cfg);ST.charts[canvasId]=ch;return ch;
+}
+
+// ═══════════════ RENDER ═══════════════
+const $=id=>document.getElementById(id);
+function h(tag,props,...ch){const el=document.createElement(tag);if(props)Object.entries(props).forEach(([k,v])=>{if(k==="class")el.className=v;else if(k.startsWith("on"))el.addEventListener(k.slice(2).toLowerCase(),v);else if(k==="style"&&typeof v==="object")Object.assign(el.style,v);else el.setAttribute(k,v)});ch.flat().forEach(c=>{if(c==null)return;el.appendChild(typeof c==="string"?document.createTextNode(c):c)});return el}
+
+function renderStageBar(){
+  const sb=$("stagebarInner");sb.innerHTML="";
+  ["Upload","Sweeps","IV Review","Summary","Fraunhofer","Export"].forEach((s,i)=>{
+    const cls="stagebtn"+(ST.stage===i?" active":"")+(i<ST.stage?" done":"");
+    const label=(i<ST.stage?"":(i+1)+". ")+s;
+    const b=h("button",{class:cls},label);
+    b.onclick=()=>{if(i<=ST.stage){ST.stage=i;render()}};sb.appendChild(b)});
+  const rt=$("rnTag");if(ST.RnStar){rt.classList.remove("hide");rt.textContent="Rn★ = "+(ST.RnStar*1e3).toFixed(3)+" mΩ"}else rt.classList.add("hide")}
+
+function render(){
+  destroyCharts();renderStageBar();const m=$("main");m.innerHTML="";
+  if(ST.stage===0)renderUpload(m);
+  else if(ST.stage===1)renderSweepSelect(m);
+  else if(ST.stage===2)renderReview(m);
+  else if(ST.stage===3)renderSummary(m);
+  else if(ST.stage===4)renderFraunhofer(m);
+  else if(ST.stage===5)renderExport(m);
+}
+
+// ═══════════════ STAGE 0 ═══════════════
+function renderUpload(m){
+  const wrap=h("div",{style:{maxWidth:"560px",margin:"36px auto"}});
+  const dz=h("div",{class:"dropzone"},h("div",{style:{fontSize:"28px",marginBottom:"10px"}},"⚡"),
+    h("div",{style:{fontFamily:"'EB Garamond',Georgia,serif",fontSize:"1.1rem",color:"var(--maroon)",fontWeight:600}},"Drop PPMS CSV files"),
+    h("div",{style:{fontSize:"10px"}},'Auto-detects "plus"/"minus" or "+"/"-" in filenames'));
+  dz.ondragover=e=>e.preventDefault();
+  dz.ondrop=e=>{e.preventDefault();[...e.dataTransfer.files].forEach(f=>{const n=f.name.toLowerCase();
+    if(n.includes("plus")||/[_\-\s]\+|^\+|\+ic|\+_/.test(n))loadFile(f,"plus");
+    else if(n.includes("minus")||/[_\-\s]\-|^\-|\-ic|\-_/.test(n))loadFile(f,"minus")})};
+  wrap.appendChild(dz);
+
+  const btns=h("div",{style:{display:"flex",gap:"8px",justifyContent:"center",marginTop:"14px"}});
+  const pi=h("input",{type:"file",accept:".csv",style:{display:"none"}});pi.onchange=e=>{if(e.target.files[0])loadFile(e.target.files[0],"plus")};
+  const pb=h("button",{class:"btn"},ST.plusAll?"✓ Plus ("+ST.plusAll.curves.length+" B)":"Load +Ic / plus.csv");
+  if(ST.plusAll){pb.style.borderColor="var(--grn)";pb.style.color="var(--grn)"}
+  pb.onclick=()=>pi.click();btns.append(pi,pb);
+
+  const mi=h("input",{type:"file",accept:".csv",style:{display:"none"}});mi.onchange=e=>{if(e.target.files[0])loadFile(e.target.files[0],"minus")};
+  const mb=h("button",{class:"btn"},ST.minusAll?"✓ Minus ("+ST.minusAll.curves.length+" B)":"Load −Ic / minus.csv");
+  if(ST.minusAll){mb.style.borderColor="var(--grn)";mb.style.color="var(--grn)"}
+  mb.onclick=()=>mi.click();btns.append(mi,mb);
+  wrap.appendChild(btns);
+
+  if(ST.plusAll&&ST.minusAll){
+    const cfg=h("div",{class:"center",style:{marginTop:"24px"}});
+    const go=h("button",{class:"btn-a"},"Select Sweeps →");go.onclick=()=>{ST.stage=1;render()};cfg.appendChild(go);
+    wrap.appendChild(cfg);
+  }
+  m.appendChild(wrap);
+}
+
+function loadFile(f,which){const r=new FileReader();r.onload=e=>{const p=parsePPMS(e.target.result);if(p){
+  if(which==="plus"){ST.plusAll=p;ST.plusSeq=p.seq;ST.plusRange=[0,p.seq.length-1]}
+  else{ST.minusAll=p;ST.minusSeq=p.seq;ST.minusRange=[0,p.seq.length-1]}
+  ST.unit=p.unit;render()}};r.readAsText(f)}
+
+// ═══════════════ STAGE 1: SWEEP SELECT ═══════════════
+function renderSweepSelect(m){
+  m.appendChild(h("div",{class:"section-title"},"Sweep Selection"));
+  m.appendChild(h("div",{style:{fontSize:"10px",color:"var(--dim)",marginBottom:"10px"}},"Select the range of steps (I-V curves in acquisition order) to process. Use this to pick forward or reverse field sweeps."));
+
+  function makePanel(label,seq,range,setRange,canvasId,color){
+    const p=h("div",{class:"panel mb8"});
+    const dir=seq.length>1?(seq[0]>seq[seq.length-1]?"↘ descending":"↗ ascending"):"";
+    // Find turning points
+    const turns=[];for(let i=1;i<seq.length-1;i++){if((seq[i]-seq[i-1])*(seq[i+1]-seq[i])<0)turns.push({step:i,B:seq[i]})}
+    const info=label+" · "+seq.length+" steps · B: "+seq[0]+" → "+seq[seq.length-1]+" "+ST.unit;
+    p.appendChild(h("div",{style:{fontSize:"11px",fontWeight:600,color,"marginBottom":"4px"}},info));
+    if(turns.length){p.appendChild(h("div",{style:{fontSize:"10px",color:"var(--dim)",marginBottom:"4px"}},
+      "Turning point"+(turns.length>1?"s":"")+": "+turns.map(t=>"step "+t.step+" (B="+t.B+")").join(", ")))}
+
+    const cw=h("div",{class:"chart-wrap",style:{height:"140px"}});cw.appendChild(h("canvas",{id:canvasId}));p.appendChild(cw);
+
+    const controls=h("div",{class:"flex mt6"});
+    controls.appendChild(h("label",{class:"lbl",style:{marginBottom:0,marginRight:"4px"}},"Start step:"));
+    const si=h("input",{class:"inp",type:"number",min:0,max:seq.length-1,value:range[0],style:{width:"70px"}});
+    si.onchange=e=>{range[0]=Math.max(0,Math.min(+e.target.value||0,range[1]));setRange([...range]);render()};
+    controls.appendChild(si);
+    controls.appendChild(h("label",{class:"lbl",style:{marginBottom:0,marginLeft:"12px",marginRight:"4px"}},"End step:"));
+    const ei=h("input",{class:"inp",type:"number",min:0,max:seq.length-1,value:range[1],style:{width:"70px"}});
+    ei.onchange=e=>{range[1]=Math.max(range[0],Math.min(+e.target.value||0,seq.length-1));setRange([...range]);render()};
+    controls.appendChild(ei);
+    const nSel=range[1]-range[0]+1;
+    controls.appendChild(h("span",{style:{fontSize:"10px",color:"var(--dim)",marginLeft:"12px"}},nSel+" steps selected · B: "+seq[range[0]]+" → "+seq[range[1]]+" "+ST.unit));
+    p.appendChild(controls);
+
+    // Quick presets for turns
+    if(turns.length){
+      const presets=h("div",{class:"flex mt6"});
+      presets.appendChild(h("span",{style:{fontSize:"9px",color:"var(--dim)",marginRight:"4px"}},"Quick:"));
+      // First segment (0 to first turn)
+      const b1=h("button",{class:"btn-g"},"Steps 0–"+turns[0].step);
+      b1.onclick=()=>{range[0]=0;range[1]=turns[0].step;setRange([...range]);render()};presets.appendChild(b1);
+      // Second segment (first turn to end or next turn)
+      const end2=turns.length>1?turns[1].step:seq.length-1;
+      const b2=h("button",{class:"btn-g"},"Steps "+turns[0].step+"–"+end2);
+      b2.onclick=()=>{range[0]=turns[0].step;range[1]=end2;setRange([...range]);render()};presets.appendChild(b2);
+      if(turns.length>1){
+        const b3=h("button",{class:"btn-g"},"Steps "+turns[1].step+"–"+(seq.length-1));
+        b3.onclick=()=>{range[0]=turns[1].step;range[1]=seq.length-1;setRange([...range]);render()};presets.appendChild(b3);
+      }
+      // All
+      const ba=h("button",{class:"btn-g"},"All");
+      ba.onclick=()=>{range[0]=0;range[1]=seq.length-1;setRange([...range]);render()};presets.appendChild(ba);
+      p.appendChild(presets);
+    }
+    return p;
+  }
+
+  m.appendChild(makePanel("+Ic",ST.plusSeq,ST.plusRange,r=>{ST.plusRange=r},"sweepChartPlus","#2563eb"));
+  m.appendChild(makePanel("−Ic",ST.minusSeq,ST.minusRange,r=>{ST.minusRange=r},"sweepChartMinus","#16a34a"));
+
+  // Rn bound fraction
+  const cfg=h("div",{class:"flex mt10",style:{justifyContent:"center"}});
+  cfg.appendChild(h("label",{class:"lbl",style:{marginBottom:0,marginRight:"6px"}},"Rn bound fraction:"));
+  const ri=h("input",{class:"inp",type:"number",step:"0.05",value:ST.rnBF,style:{width:"70px"}});
+  ri.onchange=e=>{ST.rnBF=+e.target.value||0.2};cfg.appendChild(ri);
+  m.appendChild(cfg);
+
+  const btns=h("div",{class:"flex mt10",style:{justifyContent:"center"}});
+  btns.appendChild(Object.assign(h("button",{class:"btn"},"← Upload"),{onclick:()=>{ST.stage=0;render()}}));
+  const go=h("button",{class:"btn-a"},"Start IV Review →");go.onclick=startReview;btns.appendChild(go);
+  m.appendChild(btns);
+
+  // Draw B vs step charts
+  setTimeout(()=>{
+    [{id:"sweepChartPlus",seq:ST.plusSeq,range:ST.plusRange,col:"#2563eb"},
+     {id:"sweepChartMinus",seq:ST.minusSeq,range:ST.minusRange,col:"#16a34a"}].forEach(({id,seq,range,col})=>{
+      const xs=seq.map((_,i)=>i),ys=seq;
+      // Color: selected range vs unselected
+      const selX=[],selY=[],unX=[],unY=[];
+      xs.forEach((x,i)=>{if(i>=range[0]&&i<=range[1]){selX.push(x);selY.push(ys[i])}else{unX.push(x);unY.push(ys[i])}});
+      makeScatter(id,[],[
+        {label:"Selected",x:selX,y:selY,color:col,radius:2.5},
+        {label:"Excluded",x:unX,y:unY,color:"#b5a99a",radius:2}],
+        "Step","B ("+ST.unit+")")});
+  },50);
+}
+
+function applySweepSelection(){
+  // Filter stepCurves to selected range, building plusRaw and minusRaw
+  const filterCurves=(all,range)=>{
+    const steps=all.stepCurves.slice(range[0],range[1]+1);
+    // Merge by B (in case same B appears multiple times within range)
+    const byB=new Map();
+    steps.forEach(sc=>{if(!byB.has(sc.B))byB.set(sc.B,{B:sc.B,I:[],V:[]});const m=byB.get(sc.B);m.I.push(...sc.I);m.V.push(...sc.V)});
+    const curves=[];byB.forEach(c=>{const idx=[...c.I.keys()].sort((a,b)=>c.I[a]-c.I[b]);curves.push({B:c.B,I:idx.map(i=>c.I[i]),V:idx.map(i=>c.V[i])})});
+    curves.sort((a,b)=>a.B-b.B);return curves;
+  };
+  ST.plusRaw=filterCurves(ST.plusAll,ST.plusRange);
+  ST.minusRaw=filterCurves(ST.minusAll,ST.minusRange);
+}
+
+function startReview(){
+  applySweepSelection();
+  if(!ST.plusRaw||!ST.minusRaw||!ST.plusRaw.length||!ST.minusRaw.length)return;
+  ST.RnStar=estRn([...ST.plusRaw,...ST.minusRaw]);
+  const so=a=>[...a].sort((a,b)=>Math.abs(a.B)-Math.abs(b.B));
+  ST.order=[...so(ST.plusRaw).map(c=>({br:"+",B:c.B})),...so(ST.minusRaw).map(c=>({br:"-",B:c.B}))];
+  const f=ST.order[0],src=f.br==="+"?ST.plusRaw:ST.minusRaw,curve=src.find(c=>c.B===f.B);
+  const res=fitRSJ(curve.I,curve.V,ST.RnStar,ST.rnBF);
+  ST.fits=new Map();ST.fits.set(f.br+":"+f.B,{...res,excluded:false});
+  ST.curIc=res.Ic;ST.curRn=res.Rn;ST.pos=0;ST.stage=2;render();
+}
+
+// ═══════════════ STAGE 2: IV REVIEW ═══════════════
+function curItem(){return ST.order[ST.pos]||null}
+function curCurve(){const c=curItem();if(!c)return null;return(c.br==="+"?ST.plusRaw:ST.minusRaw).find(x=>x.B===c.B)}
+function curFitR(){const c=curItem();return c?ST.fits.get(c.br+":"+c.B):null}
+
+function saveAndGo(delta){
+  const c=curItem();if(!c)return;const key=c.br+":"+c.B;
+  const ex=ST.fits.get(key)||{};ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:ex.excluded||false});
+  const np=ST.pos+delta;if(np<0||np>=ST.order.length)return;
+  const next=ST.order[np],nk=next.br+":"+next.B;
+  if(!ST.fits.has(nk)){const src=next.br==="+"?ST.plusRaw:ST.minusRaw,cv=src.find(x=>x.B===next.B);
+    const res=fitRSJ(cv.I,cv.V,ST.RnStar,ST.rnBF,ST.curIc);ST.fits.set(nk,{...res,excluded:false});
+    ST.curIc=res.Ic;ST.curRn=res.Rn}else{const f=ST.fits.get(nk);ST.curIc=f.Ic;ST.curRn=f.Rn}
+  ST.pos=np;render();
+}
+
+function toggleExcl(){const c=curItem();if(!c)return;const key=c.br+":"+c.B;const ex=ST.fits.get(key)||{};
+  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:!ex.excluded});render()}
+
+function finishReview(){const c=curItem();if(!c)return;const key=c.br+":"+c.B;const ex=ST.fits.get(key)||{};
+  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:ex.excluded||false});ST.stage=3;render()}
+
+function updateIVChart(){
+  const cv=curCurve(),f=curFitR();if(!cv||!f)return;
+  const bc=baseCorr(cv.I,cv.V);
+  const ch=ST.charts["ivChart"];if(!ch)return;
+  // Update fit line
+  const Imin=Math.min(...cv.I),Imx=Math.max(...cv.I);
+  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,f.V0||0)*1e6)}
+  ch.data.datasets[1].data=fitX.map((x,i)=>({x,y:fitY[i]}));ch.update("none");
+  // Update residual
+  const rch=ST.charts["resChart"];if(rch){
+    rch.data.datasets[0].data=cv.I.map((ii,j)=>({x:ii*1e3,y:(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,f.V0||0))*1e6}));rch.update("none")}
+  // Update labels
+  const il=$("icLabel");if(il)il.textContent="Ic = "+(ST.curIc*1e3).toFixed(4)+" mA";
+  const rl=$("rnLabel");if(rl)rl.textContent="Rn = "+(ST.curRn*1e3).toFixed(4)+" mΩ";
+}
+
+function renderReview(m){
+  const c=curItem(),cv=curCurve(),f=curFitR();if(!c||!cv||!f)return;
+  // Progress
+  const prog=h("div",{class:"flex",style:{marginBottom:"8px"}},
+    h("span",{style:{fontSize:"11px",color:"var(--dim)",minWidth:"60px"}},(ST.pos+1)+"/"+ST.order.length),
+    h("div",{class:"prog"},h("div",{class:"prog-fill",style:{width:((ST.pos+1)/ST.order.length*100)+"%"}})),
+    h("span",{class:"tag",style:{background:(c.br==="+"?"rgba(37,99,235,0.12)":"rgba(22,163,74,0.12)"),color:c.br==="+"?"#2563eb":"#16a34a"}},c.br==="+"?"I+":"I−"),
+    h("span",{style:{fontSize:"12px",color:"var(--maroon)",fontWeight:700}},"B = "+c.B+" "+ST.unit));
+  if(f.excluded)prog.appendChild(h("span",{class:"tag",style:{background:"rgba(220,38,38,0.12)",color:"var(--red)"}},"EXCLUDED"));
+  m.appendChild(prog);
+
+  const grid=h("div",{class:"grid2"});
+  // Left: charts
+  const left=h("div");
+  const p1=h("div",{class:"panel"});const cw1=h("div",{class:"chart-wrap",style:{height:"260px"}});
+  cw1.appendChild(h("canvas",{id:"ivChart"}));p1.appendChild(cw1);left.appendChild(p1);
+  const p2=h("div",{class:"panel mt6"});p2.appendChild(h("div",{style:{fontSize:"9px",color:"var(--dim)",marginBottom:"2px"}},"Residual"));
+  const cw2=h("div",{class:"chart-wrap",style:{height:"90px"}});cw2.appendChild(h("canvas",{id:"resChart"}));p2.appendChild(cw2);left.appendChild(p2);
+  grid.appendChild(left);
+
+  // Right: controls
+  const right=h("div");const cp=h("div",{class:"panel"});
+  cp.appendChild(h("div",{class:"subsection-title"},"Fit Controls"));
+  const icLbl=h("label",{class:"lbl",id:"icLabel"},"Ic = "+(ST.curIc*1e3).toFixed(4)+" mA");cp.appendChild(icLbl);
+  const Im=Math.max(...cv.I.map(Math.abs));
+  const icSlider=h("input",{type:"range",min:0,max:Im*0.95,step:Im*0.0005,value:ST.curIc});
+  icSlider.oninput=e=>{ST.curIc=+e.target.value;updateIVChart()};cp.appendChild(icSlider);
+  const icInp=h("input",{class:"inp",type:"number",step:"0.0001",value:+(ST.curIc*1e3).toPrecision(6),style:{marginTop:"3px",marginBottom:"10px"}});
+  icInp.onchange=e=>{ST.curIc=(+e.target.value)*1e-3;icSlider.value=ST.curIc;updateIVChart()};cp.appendChild(icInp);
+
+  const rnLbl=h("label",{class:"lbl",id:"rnLabel"},"Rn = "+(ST.curRn*1e3).toFixed(4)+" mΩ");cp.appendChild(rnLbl);
+  const rnSlider=h("input",{type:"range",min:ST.RnStar*0.3,max:ST.RnStar*2,step:ST.RnStar*0.001,value:ST.curRn});
+  rnSlider.oninput=e=>{ST.curRn=+e.target.value;updateIVChart()};cp.appendChild(rnSlider);
+  const rnInp=h("input",{class:"inp",type:"number",step:"0.0001",value:+(ST.curRn*1e3).toPrecision(6),style:{marginTop:"3px",marginBottom:"10px"}});
+  rnInp.onchange=e=>{ST.curRn=(+e.target.value)*1e-3;rnSlider.value=ST.curRn;updateIVChart()};cp.appendChild(rnInp);
+
+  const info=h("div",{style:{borderTop:"1px solid var(--bdr)",paddingTop:"6px",marginTop:"4px"}});
+  [["V₀",((f.V0||0)*1e6).toFixed(3)+" µV"],["Vbase",((f.Vb||0)*1e6).toFixed(3)+" µV"],["Cost",(f.cost||0).toExponential(2)]].forEach(([k,v])=>{
+    info.appendChild(h("div",{class:"kv"},h("span",{class:"k"},k),h("span",{class:"v"},v)))});
+  cp.appendChild(info);right.appendChild(cp);
+
+  const btns=h("div",{class:"flex mt8"});
+  const prevB=h("button",{class:"btn"},"← Prev");prevB.disabled=ST.pos===0;prevB.onclick=()=>saveAndGo(-1);btns.appendChild(prevB);
+  const exB=h("button",{class:f.excluded?"btn-d":"btn-g"},(f.excluded?"Excluded":"Exclude")+" (X)");exB.onclick=toggleExcl;btns.appendChild(exB);
+  const nextB=h("button",{class:"btn-a"},ST.pos>=ST.order.length-1?"Finish →":"Next →");
+  nextB.onclick=()=>{if(ST.pos>=ST.order.length-1)finishReview();else saveAndGo(1)};btns.appendChild(nextB);
+  right.appendChild(btns);right.appendChild(h("div",{style:{marginTop:"8px",fontSize:"9px",color:"var(--dim)"}},"← → navigate · X exclude"));
+  grid.appendChild(right);m.appendChild(grid);
+
+  // Draw charts
+  const bc=baseCorr(cv.I,cv.V);
+  const dataX=cv.I.map(i=>i*1e3),dataY=bc.Vc.map(v=>v*1e6);
+  const Imin=Math.min(...cv.I),Imx=Math.max(...cv.I);
+  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,f.V0||0)*1e6)}
+  makeScatter("ivChart",[],
+    [{label:"Data",x:dataX,y:dataY,color:"#2563eb",radius:2},
+     {label:"RSJ",x:fitX,y:fitY,color:"#ea580c",line:true,radius:0,lineWidth:2,order:0}],
+    "I (mA)","V (µV)");
+  const resY=cv.I.map((ii,j)=>(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,f.V0||0))*1e6);
+  makeScatter("resChart",[],[{label:"Residual",x:dataX,y:resY,color:"#7c3aed",radius:1.5}],"I (mA)","ΔV (µV)");
+}
+
+// Keyboard
+document.addEventListener("keydown",e=>{
+  if(ST.stage!==2)return;
+  if(e.key==="ArrowRight"||e.key==="ArrowDown"){e.preventDefault();saveAndGo(1)}
+  if(e.key==="ArrowLeft"||e.key==="ArrowUp"){e.preventDefault();saveAndGo(-1)}
+  if(e.key==="x"||e.key==="X"){e.preventDefault();toggleExcl()}
+});
+
+// ═══════════════ STAGE 3: SUMMARY ═══════════════
+function getSummary(){
+  const pp=[],mp=[],ep=[],em=[];
+  ST.fits.forEach((f,key)=>{const[br,bs]=key.split(":");const B=+bs;const e={B,Ic:f.Ic,Rn:f.Rn,cost:f.cost};
+    if(f.excluded){br==="+"?ep.push(e):em.push(e)}else{br==="+"?pp.push(e):mp.push(e)}});
+  pp.sort((a,b)=>a.B-b.B);mp.sort((a,b)=>a.B-b.B);
+  return{pp,mp,ep,em,maxP:pp.length?Math.max(...pp.map(p=>p.Ic)):0,maxM:mp.length?Math.max(...mp.map(p=>Math.abs(p.Ic))):0}}
+
+function renderSummary(m){
+  const s=getSummary();
+  m.appendChild(h("div",{class:"section-title"},"Ic(B) Summary"));
+  const grid=h("div",{class:"grid2s"});
+  const left=h("div",{class:"panel"});const cw=h("div",{class:"chart-wrap",style:{height:"360px"}});
+  cw.appendChild(h("canvas",{id:"sumChart"}));left.appendChild(cw);grid.appendChild(left);
+
+  const right=h("div");
+  const sp=h("div",{class:"panel"});sp.appendChild(h("div",{class:"subsection-title"},"Stats"));
+  [["Plus",s.pp.length+" ("+s.ep.length+" excl)"],["Minus",s.mp.length+" ("+s.em.length+" excl)"],
+   ["Max Ic+",(s.maxP*1e3).toFixed(3)+" mA"],["Max |Ic−|",(s.maxM*1e3).toFixed(3)+" mA"],
+   ["Rn*",(ST.RnStar*1e3).toFixed(4)+" mΩ"]].forEach(([k,v])=>sp.appendChild(h("div",{class:"kv"},h("span",{class:"k"},k),h("span",{class:"v"},v))));
+  right.appendChild(sp);
+
+  const ap=h("div",{class:"panel mt8"});ap.appendChild(h("div",{class:"subsection-title"},"Airy Config"));
+  ap.appendChild(h("label",{class:"lbl"},"Mode"));
+  const sel=h("select",{class:"sel",style:{marginBottom:"8px"}},h("option",{value:"free"},"Independent Ic+/Ic− (diode)"),h("option",{value:"averaged"},"Averaged (symmetric)"));
+  sel.value=ST.diodeMode;sel.onchange=e=>{ST.diodeMode=e.target.value};ap.appendChild(sel);
+  const fg=h("div",{class:"gridf"});
+  [["λ_L (nm)","lambdaL"],["t_top (nm)","tTop"],["t_bot (nm)","tBot"],["d_bar (nm)","dBarrier"],["w seed (µm)","w"]].forEach(([l,k])=>{
+    const d=h("div");d.appendChild(h("label",{class:"lbl",style:{fontSize:"8px"}},l));
+    const inp=h("input",{class:"inp",type:"number",step:k==="w"?"0.1":"1",value:ST.airy[k]});
+    inp.onchange=e=>{ST.airy[k]=+e.target.value||0};d.appendChild(inp);fg.appendChild(d)});
+  ap.appendChild(fg);right.appendChild(ap);
+
+  const btns=h("div",{class:"flex mt10"});
+  const bb=h("button",{class:"btn"},"← IV Review");bb.onclick=()=>{ST.stage=2;render()};btns.appendChild(bb);
+  const fb=h("button",{class:"btn-a"},"Fit Airy →");fb.onclick=doAiry;btns.appendChild(fb);
+  right.appendChild(btns);grid.appendChild(right);m.appendChild(grid);
+
+  // Chart
+  const ds=[];
+  if(s.pp.length)ds.push({label:"Ic+",x:s.pp.map(p=>p.B),y:s.pp.map(p=>p.Ic),color:"#2563eb",radius:4});
+  if(s.mp.length)ds.push({label:"|Ic−|",x:s.mp.map(p=>p.B),y:s.mp.map(p=>Math.abs(p.Ic)),color:"#16a34a",radius:3.5,style:"rectRot"});
+  if(s.ep.length)ds.push({label:"Excl+",x:s.ep.map(p=>p.B),y:s.ep.map(p=>p.Ic),color:"#dc2626",radius:5,style:"crossRot"});
+  if(s.em.length)ds.push({label:"Excl−",x:s.em.map(p=>p.B),y:s.em.map(p=>Math.abs(p.Ic)),color:"#dc2626",radius:5,style:"crossRot"});
+  makeScatter("sumChart",[],ds,"Field ("+ST.unit+")","Ic (A)");
+}
+
+// ═══════════════ AIRY FIT ═══════════════
+function doAiry(){
+  const s=getSummary();const pm=new Map(),mm=new Map();
+  s.pp.forEach(p=>pm.set(p.B,p.Ic));s.mp.forEach(p=>mm.set(p.B,Math.abs(p.Ic)));
+  const B=[],ip=[],im=[];pm.forEach((ic,b)=>{if(mm.has(b)){B.push(b);ip.push(ic);im.push(mm.get(b))}});
+  if(B.length<5)return;
+  const idx=[...B.keys()].sort((a,b)=>B[a]-B[b]);
+  const sB=idx.map(i=>B[i]),sP=idx.map(i=>ip[i]),sM=idx.map(i=>im[i]);
+  const te=teffInplane(ST.airy.lambdaL*1e-9,ST.airy.tTop*1e-9,ST.airy.tBot*1e-9,ST.airy.dBarrier*1e-9);
+  const ws=ST.airy.w*1e-6;const hBound=Math.ceil((Math.max(...sB)-Math.min(...sB))/2);
+
+  if(ST.diodeMode==="averaged"){
+    // Average data, fit single Airy: [logw, Hoff, logIc0]
+    const sAvg=sB.map((_,i)=>(sP[i]+sM[i])/2);
+    const maxA=Math.max(...sAvg);
+    const fn=p=>{const w=Math.exp(p[0]),H=Math.abs(p[1]),Ic0=Math.exp(p[2]);
+      const pred=airyEnv(Ic0,sB,w,te,H);
+      let c=0;for(let i=0;i<sB.length;i++)c+=(pred[i]-sAvg[i])**2;return c};
+    const r=nelderMead(fn,[Math.log(ws),0,Math.log(Math.max(maxA,1e-12))],
+      {maxIter:10000,bounds:[[Math.log(ws/5),0,-30],[Math.log(ws*5),hBound,Math.log(maxA*5)]]});
+    ST.airy.w=Math.exp(r.x[0])*1e6;ST.airy.HoffP=Math.abs(r.x[1]);ST.airy.HoffM=ST.airy.HoffP;
+    ST.airy.Ic0p=Math.exp(r.x[2])*1e3;ST.airy.Ic0m=ST.airy.Ic0p;ST.airy.signMode="pluspos";
+  } else {
+    // Free mode: independent Ic0+/-, Hoff+/-, 5 params
+    const maxP=Math.max(...sP),maxM=Math.max(...sM);
+    let best=null;
+    for(const sm of["pluspos","plusneg"]){
+      const fn=p=>{const w=Math.exp(p[0]),HP=Math.abs(p[1]),HM=Math.abs(p[2]),i0p=Math.exp(p[3]),i0m=Math.exp(p[4]);
+        const hp=sm==="pluspos"?HP:-HP,hm=sm==="pluspos"?-HM:HM;
+        const pp=airyEnv(i0p,sB,w,te,hp),pm=airyEnv(i0m,sB,w,te,hm);
+        let c=0;for(let i=0;i<sB.length;i++)c+=(pp[i]-sP[i])**2+(pm[i]-sM[i])**2;return c};
+      const r=nelderMead(fn,[Math.log(ws),0,0,Math.log(Math.max(maxP,1e-12)),Math.log(Math.max(maxM,1e-12))],
+        {maxIter:10000,bounds:[[Math.log(ws/5),0,0,-30,-30],[Math.log(ws*5),hBound,hBound,Math.log(maxP*5),Math.log(maxM*5)]]});
+      const res={sm,w:Math.exp(r.x[0]),HP:Math.abs(r.x[1]),HM:Math.abs(r.x[2]),Ic0p:Math.exp(r.x[3]),Ic0m:Math.exp(r.x[4]),cost:r.cost};
+      if(!best||res.cost<best.cost)best=res;
+    }
+    ST.airy.w=best.w*1e6;ST.airy.HoffP=best.HP;ST.airy.HoffM=best.HM;
+    ST.airy.Ic0p=best.Ic0p*1e3;ST.airy.Ic0m=best.Ic0m*1e3;ST.airy.signMode=best.sm;
+  }
+  ST.stage=4;render();
+}
+
+// ═══════════════ STAGE 4: FRAUNHOFER ═══════════════
+function getAiryCurves(){
+  const s=getSummary();const pm=new Map(),mm=new Map();
+  s.pp.forEach(p=>pm.set(p.B,p.Ic));s.mp.forEach(p=>mm.set(p.B,Math.abs(p.Ic)));
+  const B=[],ip=[],im=[];pm.forEach((ic,b)=>{if(mm.has(b)){B.push(b);ip.push(ic);im.push(mm.get(b))}});
+  const idx=[...B.keys()].sort((a,b)=>B[a]-B[b]);
+  const sB=idx.map(i=>B[i]),sP=idx.map(i=>ip[i]),sM=idx.map(i=>im[i]);
+  const te=teffInplane(ST.airy.lambdaL*1e-9,ST.airy.tTop*1e-9,ST.airy.tBot*1e-9,ST.airy.dBarrier*1e-9);
+  const w=ST.airy.w*1e-6;
+  const bMin=Math.min(...sB),bMax=Math.max(...sB),N=500;
+  const dB=Array.from({length:N+1},(_,i)=>bMin+(bMax-bMin)*i/N);
+
+  if(ST.diodeMode==="averaged"){
+    const sAvg=sB.map((_,i)=>(sP[i]+sM[i])/2);
+    const H=Math.abs(ST.airy.HoffP);
+    const ic0=ST.airy.Ic0p*1e-3;
+    const dA=airyEnv(ic0,dB,w,te,H);
+    return{sB,sP,sM,sAvg,dB,dP:dA,dM:null,te,averaged:true};
+  } else {
+    const HP=Math.abs(ST.airy.HoffP),HM=Math.abs(ST.airy.HoffM);
+    const ic0p=ST.airy.Ic0p*1e-3,ic0m=ST.airy.Ic0m*1e-3;
+    const hp=ST.airy.signMode==="pluspos"?HP:-HP,hm=ST.airy.signMode==="pluspos"?-HM:HM;
+    const dP=airyEnv(ic0p,dB,w,te,hp),dM=airyEnv(ic0m,dB,w,te,hm);
+    return{sB,sP,sM,sAvg:null,dB,dP,dM,te,averaged:false};
+  }
+}
+
+function updateFraunhofer(){
+  const ac=getAiryCurves();
+  const ch=ST.charts["fraunChart"];if(ch){
+    if(ac.averaged){
+      ch.data.datasets[0].data=ac.dB.map((x,i)=>({x,y:ac.dP[i]}));
+      ch.update("none");
+    } else {
+      ch.data.datasets[0].data=ac.dB.map((x,i)=>({x,y:ac.dP[i]}));
+      ch.data.datasets[1].data=ac.dB.map((x,i)=>({x,y:ac.dM[i]}));
+      ch.update("none");
+    }
+  }
+  // Diode charts (free mode only)
+  if(!ac.averaged){
+    ["dIcChart","absDChart","etaChart"].forEach((id,ci)=>{
+      const dch=ST.charts[id];if(!dch)return;
+      const lineD=ac.dB.map((b,i)=>{const d=ac.dP[i]-ac.dM[i];
+        if(ci===0)return{x:b,y:d};if(ci===1)return{x:b,y:Math.abs(d)};return{x:b,y:d/Math.max(ac.dP[i]+ac.dM[i],1e-30)}});
+      dch.data.datasets[1].data=lineD;dch.update("none")});
+  }
+  // Labels
+  ["wLbl","hpLbl","hmLbl","ic0pLbl","ic0mLbl"].forEach(id=>{const el=$(id);if(el){
+    if(id==="wLbl")el.textContent="w = "+ST.airy.w.toFixed(3)+" µm";
+    if(id==="hpLbl")el.textContent=(ac.averaged?"H_off = ":"H_off+ = ")+ST.airy.HoffP.toFixed(1)+" "+ST.unit;
+    if(id==="ic0pLbl")el.textContent=(ac.averaged?"Ic0 = ":"Ic0+ = ")+ST.airy.Ic0p.toFixed(4)+" mA";
+    if(id==="ic0mLbl")el.textContent="Ic0− = "+ST.airy.Ic0m.toFixed(4)+" mA";
+    if(id==="hmLbl")el.textContent="H_off− = "+ST.airy.HoffM.toFixed(1)+" "+ST.unit}});
+}
+
+function renderFraunhofer(m){
+  const ac=getAiryCurves();const isAvg=ac.averaged;
+  m.appendChild(h("div",{class:"section-title"},
+    isAvg?"Fraunhofer / Airy (Averaged)":"Fraunhofer / Airy (Diode)"));
+  const grid=h("div",{class:"grid2w"});
+
+  // Left
+  const left=h("div");
+  const p1=h("div",{class:"panel"});const cw1=h("div",{class:"chart-wrap",style:{height:isAvg?"360px":"280px"}});
+  cw1.appendChild(h("canvas",{id:"fraunChart"}));p1.appendChild(cw1);left.appendChild(p1);
+
+  // Diode (free mode only)
+  if(!isAvg){
+    const dp=h("div",{class:"panel mt8"});dp.appendChild(h("div",{class:"subsection-title"},"Diode"));
+    const dg=h("div",{class:"grid3"});
+    [["ΔIc","dIcChart"],[ "|ΔIc|","absDChart"],["η","etaChart"]].forEach(([title,id])=>{
+      const d=h("div");d.appendChild(h("div",{style:{fontSize:"8px",color:"var(--dim)",marginBottom:"1px"}},title));
+      const cw=h("div",{class:"chart-wrap",style:{height:"120px"}});cw.appendChild(h("canvas",{id}));d.appendChild(cw);dg.appendChild(d)});
+    dp.appendChild(dg);left.appendChild(dp);
+  }
+  grid.appendChild(left);
+
+  // Right: controls
+  const right=h("div");const cp=h("div",{class:"panel"});
+  cp.appendChild(h("div",{class:"subsection-title"},"Airy Parameters"));
+
+  function addSlider(label,id,key,min,max,step){
+    const lbl=h("label",{class:"lbl",id:id+"Lbl"},label);cp.appendChild(lbl);
+    const sl=h("input",{type:"range",min,max,step,value:ST.airy[key]});
+    sl.oninput=e=>{ST.airy[key]=+e.target.value;
+      if(isAvg&&key==="Ic0p")ST.airy.Ic0m=ST.airy.Ic0p;
+      if(isAvg&&key==="HoffP")ST.airy.HoffM=ST.airy.HoffP;
+      updateFraunhofer()};cp.appendChild(sl);
+    const inp=h("input",{class:"inp",type:"number",step,value:ST.airy[key],style:{marginTop:"2px",marginBottom:"8px"}});
+    inp.onchange=e=>{ST.airy[key]=+e.target.value||0;sl.value=ST.airy[key];
+      if(isAvg&&key==="Ic0p")ST.airy.Ic0m=ST.airy.Ic0p;
+      if(isAvg&&key==="HoffP")ST.airy.HoffM=ST.airy.HoffP;
+      updateFraunhofer()};cp.appendChild(inp)
+  }
+  const imx=Math.max(...ac.sP,...ac.sM)*1e3*2.5;
+  const bRange=Math.max(...ac.sB)-Math.min(...ac.sB);const hoffMax=Math.ceil(bRange/2);
+  addSlider("w = "+ST.airy.w.toFixed(3)+" µm","w","w",0.1,20,0.01);
+  if(isAvg){
+    addSlider("H_off = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",0,hoffMax,0.5);
+    addSlider("Ic0 = "+ST.airy.Ic0p.toFixed(4)+" mA","ic0p","Ic0p",0,imx,0.001);
+  } else {
+    addSlider("H_off+ = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",0,hoffMax,0.5);
+    addSlider("H_off− = "+ST.airy.HoffM.toFixed(1)+" "+ST.unit,"hm","HoffM",0,hoffMax,0.5);
+    addSlider("Ic0+ = "+ST.airy.Ic0p.toFixed(4)+" mA","ic0p","Ic0p",0,imx,0.001);
+    addSlider("Ic0− = "+ST.airy.Ic0m.toFixed(4)+" mA","ic0m","Ic0m",0,imx,0.001);
+    cp.appendChild(h("label",{class:"lbl"},"Sign mode"));
+    const ssel=h("select",{class:"sel",style:{marginBottom:"8px"}},h("option",{value:"pluspos"},"plus-positive"),h("option",{value:"plusneg"},"plus-negative"));
+    ssel.value=ST.airy.signMode;ssel.onchange=e=>{ST.airy.signMode=e.target.value;updateFraunhofer()};cp.appendChild(ssel);
+  }
+
+  // Material params
+  const md=h("div",{style:{borderTop:"1px solid var(--bdr)",paddingTop:"6px",marginTop:"2px"}});
+  md.appendChild(h("div",{style:{fontSize:"9px",color:"var(--dim)",fontWeight:600,marginBottom:"4px"}},"Material (fixed)"));
+  const fg=h("div",{class:"gridf"});
+  [["λ_L","lambdaL"],["t_top","tTop"],["t_bot","tBot"],["d_bar","dBarrier"]].forEach(([l,k])=>{
+    const d=h("div");d.appendChild(h("label",{class:"lbl",style:{fontSize:"8px"}},l+" (nm)"));
+    const inp=h("input",{class:"inp",type:"number",value:ST.airy[k],style:{fontSize:"10px"}});
+    inp.onchange=e=>{ST.airy[k]=+e.target.value||0;updateFraunhofer()};d.appendChild(inp);fg.appendChild(d)});
+  md.appendChild(fg);
+  md.appendChild(h("div",{class:"kv",style:{marginTop:"4px"}},h("span",{class:"k"},"t_eff"),h("span",{class:"v"},(ac.te*1e9).toFixed(1)+" nm")));
+  cp.appendChild(md);
+
+  const refit=h("button",{class:"btn-g",style:{width:"100%",marginTop:"8px"}},"↻ Re-run Auto Fit");refit.onclick=doAiry;cp.appendChild(refit);
+  right.appendChild(cp);
+
+  const btns=h("div",{class:"flex mt8"});
+  btns.appendChild(Object.assign(h("button",{class:"btn"},"← Summary"),{onclick:()=>{ST.stage=3;render()}}));
+  btns.appendChild(Object.assign(h("button",{class:"btn-a"},"Export →"),{onclick:()=>{ST.stage=5;render()}}));
+  right.appendChild(btns);grid.appendChild(right);m.appendChild(grid);
+
+  // Draw charts
+  if(isAvg){
+    makeScatter("fraunChart",[],[
+      {label:"Airy",x:ac.dB,y:ac.dP,color:"#ea580c",line:true,radius:0,lineWidth:2,order:0},
+      {label:"Ic (avg)",x:ac.sB,y:ac.sAvg,color:"#2563eb",radius:4}],
+      "Field ("+ST.unit+")","Ic (A)");
+  } else {
+    makeScatter("fraunChart",[],[
+      {label:"Airy+",x:ac.dB,y:ac.dP,color:"#2563eb",line:true,radius:0,lineWidth:2,order:0},
+      {label:"Airy−",x:ac.dB,y:ac.dM,color:"#16a34a",line:true,radius:0,lineWidth:2,order:0},
+      {label:"Ic+",x:ac.sB,y:ac.sP,color:"#2563eb",radius:4},
+      {label:"|Ic−|",x:ac.sB,y:ac.sM,color:"#16a34a",radius:3.5,style:"rectRot"}],
+      "Field ("+ST.unit+")","Ic (A)");
+    // Diode
+    const diodePts=ac.sB.map((b,i)=>{const d=ac.sP[i]-ac.sM[i];return{B:b,dIc:d,absD:Math.abs(d),eta:d/Math.max(ac.sP[i]+ac.sM[i],1e-30)}});
+    const diodeLine=ac.dB.map((b,i)=>{const d=ac.dP[i]-ac.dM[i];return{B:b,dA:d,absDA:Math.abs(d),etaA:d/Math.max(ac.dP[i]+ac.dM[i],1e-30)}});
+    [["dIcChart","dIc","dA","#2563eb"],["absDChart","absD","absDA","#dc2626"],["etaChart","eta","etaA","#7c3aed"]].forEach(([id,pk,ak,col])=>{
+      makeScatter(id,[],[
+        {label:"Data",x:diodePts.map(d=>d.B),y:diodePts.map(d=>d[pk]),color:col,radius:2.5},
+        {label:"Airy",x:diodeLine.map(d=>d.B),y:diodeLine.map(d=>d[ak]),color:"#ea580c",line:true,radius:0,lineWidth:1.5,order:0}],
+        null,null,{legend:false});
+    });
+  }
+}
+
+// ═══════════════ STAGE 5: EXPORT ═══════════════
+function renderExport(m){
+  const s=getSummary();
+  const wrap=h("div",{style:{maxWidth:"500px",margin:"48px auto",textAlign:"center"}});
+  wrap.append(h("div",{style:{fontSize:"36px",marginBottom:"12px"}},"✓"),
+    h("div",{class:"section-title"},"Analysis Complete"),
+    h("div",{style:{fontSize:"11px",color:"var(--dim)",marginBottom:"20px"}},(s.pp.length+s.mp.length)+" curves · "+(s.ep.length+s.em.length)+" excluded"));
+
+  const eb=h("button",{class:"btn-a",style:{width:"260px",padding:"10px 20px",fontSize:"13px"}},"⬇ Export All CSVs");
+  eb.onclick=()=>{
+    let c1="B("+ST.unit+"),Ic_plus(A),Ic_minus(A),Rn_plus(Ohm),Rn_minus(Ohm),cost_plus,cost_minus\n";
+    const pm=new Map(s.pp.map(p=>[p.B,p])),mm=new Map(s.mp.map(p=>[p.B,p]));
+    const allB=new Set([...pm.keys(),...mm.keys()]);
+    [...allB].sort((a,b)=>a-b).forEach(b=>{const p=pm.get(b),m=mm.get(b);
+      c1+=b+","+(p?p.Ic:"")+","+(m?Math.abs(m.Ic):"")+","+(p?p.Rn:"")+","+(m?m.Rn:"")+","+(p?p.cost:"")+","+(m?m.cost:"")+"\n"});
+    dlCSV("Ic_vs_B.csv",c1);
+
+    const ac=getAiryCurves();
+    if(!ac.averaged){
+      let c2="B("+ST.unit+"),dIc(A),abs_dIc(A),eta\n";
+      ac.sB.forEach((b,i)=>{const d=ac.sP[i]-ac.sM[i];c2+=b+","+d+","+Math.abs(d)+","+(d/Math.max(ac.sP[i]+ac.sM[i],1e-30))+"\n"});
+      dlCSV("diode_effect.csv",c2);
+    } else {
+      // Export averaged Ic(B) data
+      let c2="B("+ST.unit+"),Ic_avg(A)\n";
+      ac.sB.forEach((b,i)=>c2+=b+","+ac.sAvg[i]+"\n");
+      dlCSV("Ic_averaged.csv",c2);
+    }
+
+    const te=teffInplane(ST.airy.lambdaL*1e-9,ST.airy.tTop*1e-9,ST.airy.tBot*1e-9,ST.airy.dBarrier*1e-9);
+    let c3="parameter,value\nw_um,"+ST.airy.w+"\ndiode_mode,"+ST.diodeMode+"\n";
+    if(ac.averaged){
+      c3+="Hoff_"+ST.unit+","+ST.airy.HoffP+"\nIc0_mA,"+ST.airy.Ic0p+"\n";
+    } else {
+      c3+="Hoff_plus_"+ST.unit+","+ST.airy.HoffP+"\nHoff_minus_"+ST.unit+","+ST.airy.HoffM+"\n";
+      c3+="Ic0_plus_mA,"+ST.airy.Ic0p+"\nIc0_minus_mA,"+ST.airy.Ic0m+"\nsign_mode,"+ST.airy.signMode+"\n";
+    }
+    c3+="lambda_L_nm,"+ST.airy.lambdaL+"\nt_top_nm,"+ST.airy.tTop+"\nt_bot_nm,"+ST.airy.tBot+"\n";
+    c3+="d_barrier_nm,"+ST.airy.dBarrier+"\nt_eff_nm,"+(te*1e9)+"\nRn_star_Ohm,"+ST.RnStar+"\n";
+    dlCSV("airy_fit_params.csv",c3);
+
+    // Dense theory curves at 1 Oe (or 1 unit) increments for smooth plotting
+    const bMin=Math.min(...ac.sB),bMax=Math.max(...ac.sB);
+    const step=ST.unit==="T"?1e-4:ST.unit==="mT"?0.1:1; // 1 Oe equivalent
+    const w=ST.airy.w*1e-6;
+    if(ST.diodeMode==="averaged"){
+      const H=Math.abs(ST.airy.HoffP),ic0=ST.airy.Ic0p*1e-3;
+      let c5="B("+ST.unit+"),Ic_theory(A)\n";
+      for(let b=bMin;b<=bMax+step*0.5;b+=step){
+        const th=airyEnv(ic0,[b],w,te,H)[0];
+        c5+=b.toFixed(4)+","+th+"\n";
+      }
+      dlCSV("airy_theory_curves.csv",c5);
+    } else {
+      const HP=Math.abs(ST.airy.HoffP),HM=Math.abs(ST.airy.HoffM);
+      const ic0p=ST.airy.Ic0p*1e-3,ic0m=ST.airy.Ic0m*1e-3;
+      const hpSign=ST.airy.signMode==="pluspos"?HP:-HP,hmSign=ST.airy.signMode==="pluspos"?-HM:HM;
+      let c5="B("+ST.unit+"),Ic_plus_theory(A),Ic_minus_theory(A),dIc_theory(A),abs_dIc_theory(A),eta_theory\n";
+      for(let b=bMin;b<=bMax+step*0.5;b+=step){
+        const thP=airyEnv(ic0p,[b],w,te,hpSign)[0];
+        const thM=airyEnv(ic0m,[b],w,te,hmSign)[0];
+        const dIc=thP-thM;
+        c5+=b.toFixed(4)+","+thP+","+thM+","+dIc+","+Math.abs(dIc)+","+(dIc/Math.max(thP+thM,1e-30))+"\n";
+      }
+      dlCSV("airy_theory_curves.csv",c5);
+    }
+
+    let c4="branch,B,Ic(A),Rn(Ohm),V0(V),cost,excluded\n";
+    ST.fits.forEach((f,k)=>{const[br,bs]=k.split(":");c4+=br+","+bs+","+f.Ic+","+f.Rn+","+(f.V0||0)+","+f.cost+","+f.excluded+"\n"});
+    dlCSV("rsj_fit_params.csv",c4);
+  };
+  wrap.appendChild(eb);
+  wrap.appendChild(h("div",{style:{fontSize:"10px",color:"var(--dim)",marginTop:"10px",lineHeight:"1.8"}},"Ic_vs_B.csv · diode_effect.csv · airy_fit_params.csv · airy_theory_curves.csv · rsj_fit_params.csv"));
+
+  const bk=h("div",{class:"flex",style:{justifyContent:"center",marginTop:"28px"}});
+  bk.appendChild(Object.assign(h("button",{class:"btn"},"← Fraunhofer"),{onclick:()=>{ST.stage=4;render()}}));
+  bk.appendChild(Object.assign(h("button",{class:"btn"},"← IV Review"),{onclick:()=>{ST.stage=2;render()}}));
+  wrap.appendChild(bk);m.appendChild(wrap);
+}
+
+// ═══════════════ INIT ═══════════════
+render();
+</script>
+</body>
+</html>
