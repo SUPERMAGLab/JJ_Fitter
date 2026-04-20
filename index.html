@@ -248,8 +248,10 @@ function fitRSJ(I,V,RnS,bf,IcSeed){
   const bc=baseCorr(I,V),Vc=bc.Vc,Vb=bc.Vb,Im=Math.max(...I.map(Math.abs));
   const rl=RnS*(1-bf),rh=RnS*(1+bf);let ic0=IcSeed!=null?Math.min(IcSeed,0.95*Im):0;
   if(IcSeed==null){let best=1/0;for(let k=1;k<300;k++){const ic=k/300*0.95*Im;let c=0;for(let j=0;j<I.length;j++){const r=Vc[j]-rsjV(I[j],ic,RnS,0);c+=r*r}if(c<best){best=c;ic0=ic}}}
+  // V0 bound: use max voltage magnitude as scale
+  const Vmax=Math.max(...Vc.map(Math.abs),1e-8);const v0Bound=Vmax*0.2;
   const cf=p=>{const[ic,rn,v0]=p;if(ic<0||ic>0.95*Im||rn<rl||rn>rh)return 1e20;let c=0;for(let j=0;j<I.length;j++){const r=Vc[j]-rsjV(I[j],ic,rn,v0);c+=r*r}return c};
-  const res=nelderMead(cf,[ic0,RnS,0],{maxIter:2500,bounds:[[0,rl,-5e-6],[0.95*Im,rh,5e-6]]});
+  const res=nelderMead(cf,[ic0,RnS,0],{maxIter:2500,bounds:[[0,rl,-v0Bound],[0.95*Im,rh,v0Bound]]});
   return{Ic:res.x[0],Rn:res.x[1],V0:res.x[2],Vb,cost:res.cost,Vc}
 }
 
@@ -260,9 +262,10 @@ const ST={stage:0,plusRaw:null,minusRaw:null,unit:"Oe",RnStar:null,rnBF:0.2,
   plusAll:null,minusAll:null,plusSeq:[],minusSeq:[],plusRange:[0,0],minusRange:[0,0],
   fmt:"ppms", // "ppms" or "msu"
   msuFiles:[], // [{name, B, I:[], V:[]}] raw parsed MSU files
-  order:[],pos:0,fits:new Map(),curIc:0,curRn:0,
+  squidConvert:false, // multiply MSU voltages by 4.73e-5
+  order:[],pos:0,fits:new Map(),curIc:0,curRn:0,curV0:0,
   diodeMode:"free",
-  airy:{lambdaL:100,tTop:150,tBot:60,dBarrier:13,w:3,HoffP:0,HoffM:0,Ic0p:1,Ic0m:1,signMode:"pluspos"},
+  airy:{lambdaL:100,tTop:150,tBot:60,dBarrier:13,w:3,HoffP:0,HoffM:0,Ic0p:1,Ic0m:1},
   charts:{}};
 
 function parseMSU(text){
@@ -295,11 +298,13 @@ function parseMSU(text){
 function buildMSUdata(){
   const plusCurves=[],minusCurves=[],plusSeq=[],minusSeq=[];
   const sorted=[...ST.msuFiles].sort((a,b)=>a.B-b.B);
+  const vScale=ST.squidConvert?4.73e-5:1;
   for(const f of sorted){
     const pos=[],neg=[];
     for(let j=0;j<f.I.length;j++){
-      if(f.I[j]>=0) pos.push({I:f.I[j],V:f.V[j]});
-      else neg.push({I:f.I[j],V:f.V[j]});
+      const V=f.V[j]*vScale;
+      if(f.I[j]>=0) pos.push({I:f.I[j],V});
+      else neg.push({I:f.I[j],V});
     }
     pos.sort((a,b)=>a.I-b.I); neg.sort((a,b)=>a.I-b.I);
     if(pos.length>3){plusCurves.push({B:f.B,I:pos.map(p=>p.I),V:pos.map(p=>p.V)});plusSeq.push(f.B)}
@@ -503,11 +508,21 @@ function renderSweepSelect(m){
   m.appendChild(makePanel("−Ic",ST.minusSeq,ST.minusRange,r=>{ST.minusRange=r},"sweepChartMinus","#16a34a"));
 
   // Rn bound fraction
-  const cfg=h("div",{class:"flex mt10",style:{justifyContent:"center"}});
+  const cfg=h("div",{class:"flex mt10",style:{justifyContent:"center",flexWrap:"wrap",gap:"12px"}});
   cfg.appendChild(h("label",{class:"lbl",style:{marginBottom:0,marginRight:"6px"}},"Rn bound fraction:"));
   const ri=h("input",{class:"inp",type:"number",step:"0.05",value:ST.rnBF,style:{width:"70px"}});
   ri.onchange=e=>{ST.rnBF=+e.target.value||0.2};cfg.appendChild(ri);
   m.appendChild(cfg);
+
+  // SQUID amplifier conversion (MSU mode only)
+  if(ST.fmt==="msu"){
+    const sqRow=h("div",{class:"flex mt8",style:{justifyContent:"center"}});
+    const sqChk=h("input",{type:"checkbox",style:{accentColor:"var(--maroon)",marginRight:"6px"}});
+    sqChk.checked=ST.squidConvert;
+    sqChk.onchange=e=>{ST.squidConvert=e.target.checked};
+    sqRow.append(sqChk,h("label",{class:"lbl",style:{marginBottom:0}},"SQUID amplifier: multiply voltages by 4.73×10⁻⁵"));
+    m.appendChild(sqRow);
+  }
 
   const btns=h("div",{class:"flex mt10",style:{justifyContent:"center"}});
   btns.appendChild(Object.assign(h("button",{class:"btn"},"← Upload"),{onclick:()=>{ST.stage=0;render()}}));
@@ -552,7 +567,7 @@ function startReview(){
   const f=ST.order[0],src=f.br==="+"?ST.plusRaw:ST.minusRaw,curve=src.find(c=>c.B===f.B);
   const res=fitRSJ(curve.I,curve.V,ST.RnStar,ST.rnBF);
   ST.fits=new Map();ST.fits.set(f.br+":"+f.B,{...res,excluded:false});
-  ST.curIc=res.Ic;ST.curRn=res.Rn;ST.pos=0;ST.stage=2;render();
+  ST.curIc=res.Ic;ST.curRn=res.Rn;ST.curV0=res.V0;ST.pos=0;ST.stage=2;render();
 }
 
 // ═══════════════ STAGE 2: IV REVIEW ═══════════════
@@ -562,35 +577,33 @@ function curFitR(){const c=curItem();return c?ST.fits.get(c.br+":"+c.B):null}
 
 function saveAndGo(delta){
   const c=curItem();if(!c)return;const key=c.br+":"+c.B;
-  const ex=ST.fits.get(key)||{};ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:ex.excluded||false});
+  const ex=ST.fits.get(key)||{};ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,V0:ST.curV0,excluded:ex.excluded||false});
   const np=ST.pos+delta;if(np<0||np>=ST.order.length)return;
   const next=ST.order[np],nk=next.br+":"+next.B;
   if(!ST.fits.has(nk)){const src=next.br==="+"?ST.plusRaw:ST.minusRaw,cv=src.find(x=>x.B===next.B);
     const res=fitRSJ(cv.I,cv.V,ST.RnStar,ST.rnBF,ST.curIc);ST.fits.set(nk,{...res,excluded:false});
-    ST.curIc=res.Ic;ST.curRn=res.Rn}else{const f=ST.fits.get(nk);ST.curIc=f.Ic;ST.curRn=f.Rn}
+    ST.curIc=res.Ic;ST.curRn=res.Rn;ST.curV0=res.V0}else{const f=ST.fits.get(nk);ST.curIc=f.Ic;ST.curRn=f.Rn;ST.curV0=f.V0||0}
   ST.pos=np;render();
 }
 
 function toggleExcl(){const c=curItem();if(!c)return;const key=c.br+":"+c.B;const ex=ST.fits.get(key)||{};
-  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:!ex.excluded});render()}
+  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,V0:ST.curV0,excluded:!ex.excluded});render()}
 
 function finishReview(){const c=curItem();if(!c)return;const key=c.br+":"+c.B;const ex=ST.fits.get(key)||{};
-  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,excluded:ex.excluded||false});ST.stage=3;render()}
+  ST.fits.set(key,{...ex,Ic:ST.curIc,Rn:ST.curRn,V0:ST.curV0,excluded:ex.excluded||false});ST.stage=3;render()}
 
 function updateIVChart(){
   const cv=curCurve(),f=curFitR();if(!cv||!f)return;
   const bc=baseCorr(cv.I,cv.V);
   const ch=ST.charts["ivChart"];if(!ch)return;
-  // Update fit line
   const Imin=Math.min(...cv.I),Imx=Math.max(...cv.I);
-  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,f.V0||0)*1e6)}
+  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,ST.curV0)*1e6)}
   ch.data.datasets[1].data=fitX.map((x,i)=>({x,y:fitY[i]}));ch.update("none");
-  // Update residual
   const rch=ST.charts["resChart"];if(rch){
-    rch.data.datasets[0].data=cv.I.map((ii,j)=>({x:ii*1e3,y:(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,f.V0||0))*1e6}));rch.update("none")}
-  // Update labels
+    rch.data.datasets[0].data=cv.I.map((ii,j)=>({x:ii*1e3,y:(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,ST.curV0))*1e6}));rch.update("none")}
   const il=$("icLabel");if(il)il.textContent="Ic = "+(ST.curIc*1e3).toFixed(4)+" mA";
   const rl=$("rnLabel");if(rl)rl.textContent="Rn = "+(ST.curRn*1e3).toFixed(4)+" mΩ";
+  const vl=$("v0Label");if(vl)vl.textContent="V₀ = "+(ST.curV0*1e6).toFixed(3)+" µV";
 }
 
 function renderReview(m){
@@ -629,8 +642,16 @@ function renderReview(m){
   const rnInp=h("input",{class:"inp",type:"number",step:"0.0001",value:+(ST.curRn*1e3).toPrecision(6),style:{marginTop:"3px",marginBottom:"10px"}});
   rnInp.onchange=e=>{ST.curRn=(+e.target.value)*1e-3;rnSlider.value=ST.curRn;updateIVChart()};cp.appendChild(rnInp);
 
+  // V0 slider
+  const v0Lbl=h("label",{class:"lbl",id:"v0Label"},"V₀ = "+(ST.curV0*1e6).toFixed(3)+" µV");cp.appendChild(v0Lbl);
+  const Vmax=Math.max(...cv.V.map(Math.abs),1e-7)*0.2;
+  const v0Slider=h("input",{type:"range",min:-Vmax,max:Vmax,step:Vmax*0.002,value:ST.curV0});
+  v0Slider.oninput=e=>{ST.curV0=+e.target.value;updateIVChart()};cp.appendChild(v0Slider);
+  const v0Inp=h("input",{class:"inp",type:"number",step:"0.001",value:+(ST.curV0*1e6).toPrecision(4),style:{marginTop:"3px",marginBottom:"10px"}});
+  v0Inp.onchange=e=>{ST.curV0=(+e.target.value)*1e-6;v0Slider.value=ST.curV0;updateIVChart()};cp.appendChild(v0Inp);
+
   const info=h("div",{style:{borderTop:"1px solid var(--bdr)",paddingTop:"6px",marginTop:"4px"}});
-  [["V₀",((f.V0||0)*1e6).toFixed(3)+" µV"],["Vbase",((f.Vb||0)*1e6).toFixed(3)+" µV"],["Cost",(f.cost||0).toExponential(2)]].forEach(([k,v])=>{
+  [["Vbase",((f.Vb||0)*1e6).toFixed(3)+" µV"],["Cost",(f.cost||0).toExponential(2)]].forEach(([k,v])=>{
     info.appendChild(h("div",{class:"kv"},h("span",{class:"k"},k),h("span",{class:"v"},v)))});
   cp.appendChild(info);right.appendChild(cp);
 
@@ -646,12 +667,12 @@ function renderReview(m){
   const bc=baseCorr(cv.I,cv.V);
   const dataX=cv.I.map(i=>i*1e3),dataY=bc.Vc.map(v=>v*1e6);
   const Imin=Math.min(...cv.I),Imx=Math.max(...cv.I);
-  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,f.V0||0)*1e6)}
+  const fitX=[],fitY=[];for(let k=0;k<=400;k++){const ii=Imin+(Imx-Imin)*k/400;fitX.push(ii*1e3);fitY.push(rsjV(ii,ST.curIc,ST.curRn,ST.curV0)*1e6)}
   makeScatter("ivChart",[],
     [{label:"Data",x:dataX,y:dataY,color:"#2563eb",radius:2},
      {label:"RSJ",x:fitX,y:fitY,color:"#ea580c",line:true,radius:0,lineWidth:2,order:0}],
     "I (mA)","V (µV)");
-  const resY=cv.I.map((ii,j)=>(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,f.V0||0))*1e6);
+  const resY=cv.I.map((ii,j)=>(bc.Vc[j]-rsjV(ii,ST.curIc,ST.curRn,ST.curV0))*1e6);
   makeScatter("resChart",[],[{label:"Residual",x:dataX,y:resY,color:"#7c3aed",radius:1.5}],"I (mA)","ΔV (µV)");
 }
 
@@ -722,32 +743,25 @@ function doAiry(){
   const ws=ST.airy.w*1e-6;const hBound=Math.ceil((Math.max(...sB)-Math.min(...sB))/2);
 
   if(ST.diodeMode==="averaged"){
-    // Average data, fit single Airy: [logw, Hoff, logIc0]
     const sAvg=sB.map((_,i)=>(sP[i]+sM[i])/2);
     const maxA=Math.max(...sAvg);
-    const fn=p=>{const w=Math.exp(p[0]),H=Math.abs(p[1]),Ic0=Math.exp(p[2]);
+    const fn=p=>{const w=Math.exp(p[0]),H=p[1],Ic0=Math.exp(p[2]);
       const pred=airyEnv(Ic0,sB,w,te,H);
       let c=0;for(let i=0;i<sB.length;i++)c+=(pred[i]-sAvg[i])**2;return c};
     const r=nelderMead(fn,[Math.log(ws),0,Math.log(Math.max(maxA,1e-12))],
-      {maxIter:10000,bounds:[[Math.log(ws/5),0,-30],[Math.log(ws*5),hBound,Math.log(maxA*5)]]});
-    ST.airy.w=Math.exp(r.x[0])*1e6;ST.airy.HoffP=Math.abs(r.x[1]);ST.airy.HoffM=ST.airy.HoffP;
-    ST.airy.Ic0p=Math.exp(r.x[2])*1e3;ST.airy.Ic0m=ST.airy.Ic0p;ST.airy.signMode="pluspos";
+      {maxIter:10000,bounds:[[Math.log(ws/5),-hBound,-30],[Math.log(ws*5),hBound,Math.log(maxA*5)]]});
+    ST.airy.w=Math.exp(r.x[0])*1e6;ST.airy.HoffP=r.x[1];ST.airy.HoffM=r.x[1];
+    ST.airy.Ic0p=Math.exp(r.x[2])*1e3;ST.airy.Ic0m=ST.airy.Ic0p;
   } else {
-    // Free mode: independent Ic0+/-, Hoff+/-, 5 params
+    // Free mode: independent Ic0+/-, Hoff+/- (both freely positive or negative)
     const maxP=Math.max(...sP),maxM=Math.max(...sM);
-    let best=null;
-    for(const sm of["pluspos","plusneg"]){
-      const fn=p=>{const w=Math.exp(p[0]),HP=Math.abs(p[1]),HM=Math.abs(p[2]),i0p=Math.exp(p[3]),i0m=Math.exp(p[4]);
-        const hp=sm==="pluspos"?HP:-HP,hm=sm==="pluspos"?-HM:HM;
-        const pp=airyEnv(i0p,sB,w,te,hp),pm=airyEnv(i0m,sB,w,te,hm);
-        let c=0;for(let i=0;i<sB.length;i++)c+=(pp[i]-sP[i])**2+(pm[i]-sM[i])**2;return c};
-      const r=nelderMead(fn,[Math.log(ws),0,0,Math.log(Math.max(maxP,1e-12)),Math.log(Math.max(maxM,1e-12))],
-        {maxIter:10000,bounds:[[Math.log(ws/5),0,0,-30,-30],[Math.log(ws*5),hBound,hBound,Math.log(maxP*5),Math.log(maxM*5)]]});
-      const res={sm,w:Math.exp(r.x[0]),HP:Math.abs(r.x[1]),HM:Math.abs(r.x[2]),Ic0p:Math.exp(r.x[3]),Ic0m:Math.exp(r.x[4]),cost:r.cost};
-      if(!best||res.cost<best.cost)best=res;
-    }
-    ST.airy.w=best.w*1e6;ST.airy.HoffP=best.HP;ST.airy.HoffM=best.HM;
-    ST.airy.Ic0p=best.Ic0p*1e3;ST.airy.Ic0m=best.Ic0m*1e3;ST.airy.signMode=best.sm;
+    const fn=p=>{const w=Math.exp(p[0]),HP=p[1],HM=p[2],i0p=Math.exp(p[3]),i0m=Math.exp(p[4]);
+      const pp=airyEnv(i0p,sB,w,te,HP),pm=airyEnv(i0m,sB,w,te,HM);
+      let c=0;for(let i=0;i<sB.length;i++)c+=(pp[i]-sP[i])**2+(pm[i]-sM[i])**2;return c};
+    const r=nelderMead(fn,[Math.log(ws),0,0,Math.log(Math.max(maxP,1e-12)),Math.log(Math.max(maxM,1e-12))],
+      {maxIter:10000,bounds:[[Math.log(ws/5),-hBound,-hBound,-30,-30],[Math.log(ws*5),hBound,hBound,Math.log(maxP*5),Math.log(maxM*5)]]});
+    ST.airy.w=Math.exp(r.x[0])*1e6;ST.airy.HoffP=r.x[1];ST.airy.HoffM=r.x[2];
+    ST.airy.Ic0p=Math.exp(r.x[3])*1e3;ST.airy.Ic0m=Math.exp(r.x[4])*1e3;
   }
   ST.stage=4;render();
 }
@@ -766,15 +780,12 @@ function getAiryCurves(){
 
   if(ST.diodeMode==="averaged"){
     const sAvg=sB.map((_,i)=>(sP[i]+sM[i])/2);
-    const H=Math.abs(ST.airy.HoffP);
     const ic0=ST.airy.Ic0p*1e-3;
-    const dA=airyEnv(ic0,dB,w,te,H);
+    const dA=airyEnv(ic0,dB,w,te,ST.airy.HoffP);
     return{sB,sP,sM,sAvg,dB,dP:dA,dM:null,te,averaged:true};
   } else {
-    const HP=Math.abs(ST.airy.HoffP),HM=Math.abs(ST.airy.HoffM);
     const ic0p=ST.airy.Ic0p*1e-3,ic0m=ST.airy.Ic0m*1e-3;
-    const hp=ST.airy.signMode==="pluspos"?HP:-HP,hm=ST.airy.signMode==="pluspos"?-HM:HM;
-    const dP=airyEnv(ic0p,dB,w,te,hp),dM=airyEnv(ic0m,dB,w,te,hm);
+    const dP=airyEnv(ic0p,dB,w,te,ST.airy.HoffP),dM=airyEnv(ic0m,dB,w,te,ST.airy.HoffM);
     return{sB,sP,sM,sAvg:null,dB,dP,dM,te,averaged:false};
   }
 }
@@ -851,16 +862,13 @@ function renderFraunhofer(m){
   const bRange=Math.max(...ac.sB)-Math.min(...ac.sB);const hoffMax=Math.ceil(bRange/2);
   addSlider("w = "+ST.airy.w.toFixed(3)+" µm","w","w",0.1,20,0.01);
   if(isAvg){
-    addSlider("H_off = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",0,hoffMax,0.5);
+    addSlider("H_off = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",-hoffMax,hoffMax,0.5);
     addSlider("Ic0 = "+ST.airy.Ic0p.toFixed(4)+" mA","ic0p","Ic0p",0,imx,0.001);
   } else {
-    addSlider("H_off+ = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",0,hoffMax,0.5);
-    addSlider("H_off− = "+ST.airy.HoffM.toFixed(1)+" "+ST.unit,"hm","HoffM",0,hoffMax,0.5);
+    addSlider("H_off+ = "+ST.airy.HoffP.toFixed(1)+" "+ST.unit,"hp","HoffP",-hoffMax,hoffMax,0.5);
+    addSlider("H_off− = "+ST.airy.HoffM.toFixed(1)+" "+ST.unit,"hm","HoffM",-hoffMax,hoffMax,0.5);
     addSlider("Ic0+ = "+ST.airy.Ic0p.toFixed(4)+" mA","ic0p","Ic0p",0,imx,0.001);
     addSlider("Ic0− = "+ST.airy.Ic0m.toFixed(4)+" mA","ic0m","Ic0m",0,imx,0.001);
-    cp.appendChild(h("label",{class:"lbl"},"Sign mode"));
-    const ssel=h("select",{class:"sel",style:{marginBottom:"8px"}},h("option",{value:"pluspos"},"plus-positive"),h("option",{value:"plusneg"},"plus-negative"));
-    ssel.value=ST.airy.signMode;ssel.onchange=e=>{ST.airy.signMode=e.target.value;updateFraunhofer()};cp.appendChild(ssel);
   }
 
   // Material params
@@ -943,7 +951,7 @@ function renderExport(m){
       c3+="Hoff_"+ST.unit+","+ST.airy.HoffP+"\nIc0_mA,"+ST.airy.Ic0p+"\n";
     } else {
       c3+="Hoff_plus_"+ST.unit+","+ST.airy.HoffP+"\nHoff_minus_"+ST.unit+","+ST.airy.HoffM+"\n";
-      c3+="Ic0_plus_mA,"+ST.airy.Ic0p+"\nIc0_minus_mA,"+ST.airy.Ic0m+"\nsign_mode,"+ST.airy.signMode+"\n";
+      c3+="Ic0_plus_mA,"+ST.airy.Ic0p+"\nIc0_minus_mA,"+ST.airy.Ic0m+"\n";
     }
     c3+="lambda_L_nm,"+ST.airy.lambdaL+"\nt_top_nm,"+ST.airy.tTop+"\nt_bot_nm,"+ST.airy.tBot+"\n";
     c3+="d_barrier_nm,"+ST.airy.dBarrier+"\nt_eff_nm,"+(te*1e9)+"\nRn_star_Ohm,"+ST.RnStar+"\n";
@@ -954,21 +962,19 @@ function renderExport(m){
     const step=ST.unit==="T"?1e-4:ST.unit==="mT"?0.1:1; // 1 Oe equivalent
     const w=ST.airy.w*1e-6;
     if(ST.diodeMode==="averaged"){
-      const H=Math.abs(ST.airy.HoffP),ic0=ST.airy.Ic0p*1e-3;
+      const ic0=ST.airy.Ic0p*1e-3;
       let c5="B("+ST.unit+"),Ic_theory(A)\n";
       for(let b=bMin;b<=bMax+step*0.5;b+=step){
-        const th=airyEnv(ic0,[b],w,te,H)[0];
+        const th=airyEnv(ic0,[b],w,te,ST.airy.HoffP)[0];
         c5+=b.toFixed(4)+","+th+"\n";
       }
       dlCSV("airy_theory_curves.csv",c5);
     } else {
-      const HP=Math.abs(ST.airy.HoffP),HM=Math.abs(ST.airy.HoffM);
       const ic0p=ST.airy.Ic0p*1e-3,ic0m=ST.airy.Ic0m*1e-3;
-      const hpSign=ST.airy.signMode==="pluspos"?HP:-HP,hmSign=ST.airy.signMode==="pluspos"?-HM:HM;
       let c5="B("+ST.unit+"),Ic_plus_theory(A),Ic_minus_theory(A),dIc_theory(A),abs_dIc_theory(A),eta_theory\n";
       for(let b=bMin;b<=bMax+step*0.5;b+=step){
-        const thP=airyEnv(ic0p,[b],w,te,hpSign)[0];
-        const thM=airyEnv(ic0m,[b],w,te,hmSign)[0];
+        const thP=airyEnv(ic0p,[b],w,te,ST.airy.HoffP)[0];
+        const thM=airyEnv(ic0m,[b],w,te,ST.airy.HoffM)[0];
         const dIc=thP-thM;
         c5+=b.toFixed(4)+","+thP+","+thM+","+dIc+","+Math.abs(dIc)+","+(dIc/Math.max(thP+thM,1e-30))+"\n";
       }
